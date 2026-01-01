@@ -1,7 +1,9 @@
-import { View, StyleSheet, useColorScheme, ScrollView, Switch, Pressable } from 'react-native';
+import { View, StyleSheet, useColorScheme, ScrollView, Switch, Pressable, Alert, Platform } from 'react-native';
 import { MotiView, MotiText } from 'moti';
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Svg, { Path, Circle } from 'react-native-svg';
+import { WidgetService } from '@/lib/widget-service';
+import { useToast } from '@/components/toast';
 
 interface SettingItemProps {
     icon: React.ReactNode;
@@ -91,8 +93,76 @@ export default function Settings() {
     const [holidayAware, setHolidayAware] = useState(true);
     const [notifications, setNotifications] = useState(false);
     const [selectedRegion, setSelectedRegion] = useState('United States');
+    const [widgetCount, setWidgetCount] = useState(0);
+    const [isWidgetAvailable, setIsWidgetAvailable] = useState(false);
+
+    const { showToast, ToastComponent } = useToast();
 
     const iconColor = isDark ? '#9CA3AF' : '#6B7280';
+
+    // Check widget status on mount
+    useEffect(() => {
+        const checkWidgetStatus = async () => {
+            const available = WidgetService.isAvailable();
+            setIsWidgetAvailable(available);
+
+            if (available) {
+                const count = await WidgetService.getWidgetCount();
+                setWidgetCount(count);
+            }
+        };
+
+        checkWidgetStatus();
+    }, []);
+
+    // Handle add widget button press
+    const handleAddWidget = useCallback(async () => {
+        if (!isWidgetAvailable) {
+            showToast('Widget is only available on Android', 'info');
+            return;
+        }
+
+        const success = await WidgetService.requestWidgetPin();
+
+        if (success) {
+            showToast('Widget placement requested', 'success');
+            // Refresh widget count after a delay
+            setTimeout(async () => {
+                const count = await WidgetService.getWidgetCount();
+                setWidgetCount(count);
+            }, 2000);
+        } else {
+            // Show manual instructions
+            const instructions = WidgetService.showWidgetInstructions();
+            Alert.alert(
+                'How to Add Widget',
+                instructions.join('\n\n'),
+                [{ text: 'OK' }]
+            );
+        }
+    }, [isWidgetAvailable, showToast]);
+
+    // Handle refresh widget
+    const handleRefreshWidget = useCallback(async () => {
+        if (!isWidgetAvailable) return;
+
+        const success = await WidgetService.refreshWidget();
+        if (success) {
+            showToast('Widget refreshed', 'success');
+        } else {
+            showToast('Failed to refresh widget', 'error');
+        }
+    }, [isWidgetAvailable, showToast]);
+
+    // Show widget instructions
+    const showWidgetInstructions = useCallback(() => {
+        const instructions = WidgetService.showWidgetInstructions();
+        Alert.alert(
+            'How to Add Widget',
+            instructions.join('\n\n'),
+            [{ text: 'OK' }]
+        );
+    }, []);
 
     return (
         <View
@@ -210,6 +280,77 @@ export default function Settings() {
                 {/* Widget Section */}
                 <SectionHeader title="WIDGET" isDark={isDark} />
 
+                {isWidgetAvailable && (
+                    <SettingItem
+                        icon={
+                            <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                                <Path
+                                    d="M12 5v14M5 12h14"
+                                    stroke="#6366F1"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                />
+                            </Svg>
+                        }
+                        title="Add Widget to Home Screen"
+                        description={widgetCount > 0 ? `${widgetCount} widget${widgetCount !== 1 ? 's' : ''} active` : 'Quick access to your daily quote'}
+                        onPress={handleAddWidget}
+                        rightElement={
+                            <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                                <Path
+                                    d="M9 18l6-6-6-6"
+                                    stroke={iconColor}
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                />
+                            </Svg>
+                        }
+                        isDark={isDark}
+                        index={3}
+                    />
+                )}
+
+                {widgetCount > 0 && (
+                    <SettingItem
+                        icon={
+                            <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                                <Path
+                                    d="M23 4v6h-6M1 20v-6h6"
+                                    stroke={iconColor}
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                />
+                                <Path
+                                    d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"
+                                    stroke={iconColor}
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                />
+                            </Svg>
+                        }
+                        title="Refresh Widget Now"
+                        description="Manually update the widget"
+                        onPress={handleRefreshWidget}
+                        rightElement={
+                            <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                                <Path
+                                    d="M9 18l6-6-6-6"
+                                    stroke={iconColor}
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                />
+                            </Svg>
+                        }
+                        isDark={isDark}
+                        index={4}
+                    />
+                )}
+
                 <SettingItem
                     icon={
                         <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -237,7 +378,7 @@ export default function Settings() {
                         </Svg>
                     }
                     isDark={isDark}
-                    index={3}
+                    index={5}
                 />
 
                 <SettingItem
@@ -254,7 +395,7 @@ export default function Settings() {
                     }
                     title="How to Add Widget"
                     description="Learn to add myquo to your home screen"
-                    onPress={() => {/* Show widget tutorial */ }}
+                    onPress={showWidgetInstructions}
                     rightElement={
                         <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                             <Path
@@ -364,6 +505,9 @@ export default function Settings() {
                     index={7}
                 />
             </ScrollView>
+
+            {/* Toast */}
+            <ToastComponent />
         </View>
     );
 }
