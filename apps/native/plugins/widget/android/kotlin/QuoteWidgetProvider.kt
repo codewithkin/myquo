@@ -134,7 +134,45 @@ class QuoteWidgetProvider : AppWidgetProvider() {
 
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 WORK_NAME,
-                ExistingPeriodicWorkPolicy.KEEP,
+                ExistingPeriodicWorkPolicy.REPLACE,
+                updateRequest
+            )
+        }
+
+        /**
+         * Schedule daily widget updates at a specific time
+         */
+        fun scheduleQuoteUpdateAtTime(context: Context, hour: Int, minute: Int) {
+            val constraints = Constraints.Builder()
+                .setRequiresBatteryNotLow(false)
+                .build()
+
+            // Calculate delay until the next occurrence of the specified time
+            val currentTime = System.currentTimeMillis()
+            val calendar = Calendar.getInstance().apply {
+                timeInMillis = currentTime
+                set(Calendar.HOUR_OF_DAY, hour)
+                set(Calendar.MINUTE, minute)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+                
+                // If the time has already passed today, schedule for tomorrow
+                if (timeInMillis <= currentTime) {
+                    add(Calendar.DAY_OF_YEAR, 1)
+                }
+            }
+            val delayMillis = calendar.timeInMillis - currentTime
+
+            val updateRequest = PeriodicWorkRequestBuilder<QuoteUpdateWorker>(
+                24, TimeUnit.HOURS
+            )
+                .setConstraints(constraints)
+                .setInitialDelay(delayMillis, TimeUnit.MILLISECONDS)
+                .build()
+
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                WORK_NAME,
+                ExistingPeriodicWorkPolicy.REPLACE,
                 updateRequest
             )
         }

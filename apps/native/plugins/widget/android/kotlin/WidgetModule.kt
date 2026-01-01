@@ -102,4 +102,18 @@ class WidgetModule(reactContext: ReactApplicationContext) : ReactContextBaseJava
             promise.reject("WIDGET_ERROR", "Failed to schedule updates: ${e.message}")
         }
     }
+
+    /**
+     * Schedule widget updates at a specific time
+     */
+    @ReactMethod
+    fun scheduleUpdatesAtTime(hour: Int, minute: Int, promise: Promise) {
+        try {
+            val context = reactApplicationContext
+            QuoteWidgetProvider.scheduleQuoteUpdateAtTime(context, hour, minute)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("WIDGET_ERROR", "Failed to schedule updates at time: ${e.message}")
+        }
+    }
 }
