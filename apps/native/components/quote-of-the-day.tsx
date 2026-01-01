@@ -1,113 +1,102 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
     View,
     StyleSheet,
     useColorScheme,
     Pressable,
-    Share,
+    ActivityIndicator,
 } from 'react-native';
 import { MotiView, MotiText } from 'moti';
 import Svg, { Path } from 'react-native-svg';
-
-interface Quote {
-    id: string;
-    text: string;
-    author: string;
-}
-
-// Sample quotes for now - will be replaced with SQLite database
-const SAMPLE_QUOTES: Quote[] = [
-    {
-        id: 'q001',
-        text: 'Your limitation—it\'s only your imagination.',
-        author: 'Unknown',
-    },
-    {
-        id: 'q002',
-        text: 'Push yourself, because no one else is going to do it for you.',
-        author: 'Unknown',
-    },
-    {
-        id: 'q003',
-        text: 'Great things never come from comfort zones.',
-        author: 'Unknown',
-    },
-    {
-        id: 'q004',
-        text: 'Dream it. Wish it. Do it.',
-        author: 'Unknown',
-    },
-    {
-        id: 'q005',
-        text: 'Success doesn\'t just find you. You have to go out and get it.',
-        author: 'Unknown',
-    },
-    {
-        id: 'q006',
-        text: 'The harder you work for something, the greater you\'ll feel when you achieve it.',
-        author: 'Unknown',
-    },
-    {
-        id: 'q007',
-        text: 'Don\'t stop when you\'re tired. Stop when you\'re done.',
-        author: 'Unknown',
-    },
-];
+import { Quote } from '@/lib/database';
+import { getTodayQuote, getQuoteContext } from '@/lib/quote-service';
+import { toggleFavorite, isFavorited } from '@/lib/favorites-service';
+import { shareQuote, copyQuoteToClipboard } from '@/lib/share-service';
+import { useToast } from '@/components/toast';
 
 interface QuoteOfTheDayProps {
-    onFavorite?: (quote: Quote) => void;
-    isFavorited?: boolean;
+    onFavoriteChange?: (quoteId: string, isFavorited: boolean) => void;
 }
 
-export function QuoteOfTheDay({ onFavorite, isFavorited = false }: QuoteOfTheDayProps) {
+export function QuoteOfTheDay({ onFavoriteChange }: QuoteOfTheDayProps) {
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
     const [isLoaded, setIsLoaded] = useState(false);
-    const [favorited, setFavorited] = useState(isFavorited);
-    const [showCopied, setShowCopied] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+    const [quote, setQuote] = useState<Quote | null>(null);
+    const [favorited, setFavorited] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
-    // Deterministic quote selection based on date
-    const todayQuote = useMemo(() => {
-        const today = new Date();
-        const dateString = `${today.getFullYear()}-${today.getMonth() + 1}-${today.getDate()}`;
+    const { showToast, ToastComponent } = useToast();
 
-        // Simple hash for deterministic selection
-        let hash = 0;
-        for (let i = 0; i < dateString.length; i++) {
-            const char = dateString.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
-            hash = hash & hash;
+    // Load today's quote
+    const loadQuote = useCallback(async () => {
+        try {
+            setIsLoading(true);
+            setError(null);
+
+            const context = getQuoteContext();
+            const todayQuote = await getTodayQuote(context);
+
+            if (todayQuote) {
+                setQuote(todayQuote);
+                const isFav = await isFavorited(todayQuote.id);
+                setFavorited(isFav);
+            } else {
+                setError('No quotes available');
+            }
+        } catch (err) {
+            console.error('Error loading quote:', err);
+            setError('Failed to load quote');
+        } finally {
+            setIsLoading(false);
+            // Trigger entrance animation after a brief delay
+            setTimeout(() => setIsLoaded(true), 100);
         }
-
-        const index = Math.abs(hash) % SAMPLE_QUOTES.length;
-        return SAMPLE_QUOTES[index];
     }, []);
 
     useEffect(() => {
-        // Trigger entrance animation
-        const timer = setTimeout(() => setIsLoaded(true), 100);
-        return () => clearTimeout(timer);
-    }, []);
+        loadQuote();
+    }, [loadQuote]);
 
-    const handleFavorite = () => {
-        setFavorited(!favorited);
-        onFavorite?.(todayQuote);
+    const handleFavorite = async () => {
+        if (!quote) return;
+
+        try {
+            const result = await toggleFavorite(quote.id);
+            setFavorited(result.isFavorited);
+            showToast(result.message, 'success');
+            onFavoriteChange?.(quote.id, result.isFavorited);
+        } catch (err) {
+            console.error('Error toggling favorite:', err);
+            showToast('Failed to update favorite', 'error');
+        }
     };
 
     const handleShare = async () => {
+        if (!quote) return;
+
         try {
-            await Share.share({
-                message: `"${todayQuote.text}"\n— ${todayQuote.author}\n\nShared from myquo`,
-            });
-        } catch (error) {
-            console.error('Error sharing:', error);
+            const result = await shareQuote(quote);
+            if (!result.success && result.message) {
+                showToast(result.message, 'info');
+            }
+        } catch (err) {
+            console.error('Error sharing:', err);
+            showToast('Failed to share quote', 'error');
         }
     };
 
     const handleCopy = async () => {
-        // In a real app, use Clipboard API
-        setShowCopied(true);
-        setTimeout(() => setShowCopied(false), 2000);
+        if (!quote) return;
+
+        try {
+            const result = await copyQuoteToClipboard(quote);
+            showToast(result.message, result.success ? 'success' : 'error');
+        } catch (err) {
+            console.error('Error copying:', err);
+            showToast('Failed to copy quote', 'error');
+        }
     };
 
     const today = new Date();
@@ -116,6 +105,32 @@ export function QuoteOfTheDay({ onFavorite, isFavorited = false }: QuoteOfTheDay
         month: 'long',
         day: 'numeric',
     });
+
+    if (isLoading) {
+        return (
+            <View style={[styles.container, styles.loadingContainer]}>
+                <ActivityIndicator size="large" color="#6366F1" />
+            </View>
+        );
+    }
+
+    if (error || !quote) {
+        return (
+            <View style={[styles.container, styles.errorContainer]}>
+                <MotiText
+                    style={[
+                        styles.errorText,
+                        { color: isDark ? '#EF4444' : '#DC2626' },
+                    ]}
+                >
+                    {error || 'Something went wrong'}
+                </MotiText>
+                <Pressable onPress={loadQuote} style={styles.retryButton}>
+                    <MotiText style={styles.retryButtonText}>Retry</MotiText>
+                </Pressable>
+            </View>
+        );
+    }
 
     return (
         <View style={styles.container}>
@@ -141,12 +156,12 @@ export function QuoteOfTheDay({ onFavorite, isFavorited = false }: QuoteOfTheDay
                 from={{ opacity: 0, scale: 0.9 }}
                 animate={{
                     opacity: isLoaded ? 1 : 0,
-                    scale: isLoaded ? 1 : 0.9
+                    scale: isLoaded ? 1 : 0.9,
                 }}
                 transition={{
                     type: 'spring',
                     damping: 20,
-                    delay: 200
+                    delay: 200,
                 }}
                 style={[
                     styles.quoteCard,
@@ -166,14 +181,14 @@ export function QuoteOfTheDay({ onFavorite, isFavorited = false }: QuoteOfTheDay
                     <Svg width="48" height="48" viewBox="0 0 24 24" fill="none">
                         <Path
                             d="M10 11H6C5.46957 11 4.96086 10.7893 4.58579 10.4142C4.21071 10.0391 4 9.53043 4 9V7C4 6.46957 4.21071 5.96086 4.58579 5.58579C4.96086 5.21071 5.46957 5 6 5H8C8.53043 5 9.03914 5.21071 9.41421 5.58579C9.78929 5.96086 10 6.46957 10 7V15C10 16.0609 9.57857 17.0783 8.82843 17.8284C8.07828 18.5786 7.06087 19 6 19"
-                            stroke={isDark ? '#6366F1' : '#6366F1'}
+                            stroke="#6366F1"
                             strokeWidth="2"
                             strokeLinecap="round"
                             strokeLinejoin="round"
                         />
                         <Path
                             d="M20 11H16C15.4696 11 14.9609 10.7893 14.5858 10.4142C14.2107 10.0391 14 9.53043 14 9V7C14 6.46957 14.2107 5.96086 14.5858 5.58579C14.9609 5.21071 15.4696 5 16 5H18C18.5304 5 19.0391 5.21071 19.4142 5.58579C19.7893 5.96086 20 6.46957 20 7V15C20 16.0609 19.5786 17.0783 18.8284 17.8284C18.0783 18.5786 17.0609 19 16 19"
-                            stroke={isDark ? '#6366F1' : '#6366F1'}
+                            stroke="#6366F1"
                             strokeWidth="2"
                             strokeLinecap="round"
                             strokeLinejoin="round"
@@ -186,7 +201,7 @@ export function QuoteOfTheDay({ onFavorite, isFavorited = false }: QuoteOfTheDay
                     from={{ opacity: 0, translateY: 30 }}
                     animate={{
                         opacity: isLoaded ? 1 : 0,
-                        translateY: isLoaded ? 0 : 30
+                        translateY: isLoaded ? 0 : 30,
                     }}
                     transition={{ type: 'timing', duration: 600, delay: 500 }}
                 >
@@ -196,7 +211,7 @@ export function QuoteOfTheDay({ onFavorite, isFavorited = false }: QuoteOfTheDay
                             { color: isDark ? '#F9FAFB' : '#111827' },
                         ]}
                     >
-                        {todayQuote.text}
+                        {quote.text}
                     </MotiText>
                 </MotiView>
 
@@ -205,7 +220,7 @@ export function QuoteOfTheDay({ onFavorite, isFavorited = false }: QuoteOfTheDay
                     from={{ opacity: 0, translateX: -20 }}
                     animate={{
                         opacity: isLoaded ? 1 : 0,
-                        translateX: isLoaded ? 0 : -20
+                        translateX: isLoaded ? 0 : -20,
                     }}
                     transition={{ type: 'timing', duration: 500, delay: 700 }}
                 >
@@ -215,7 +230,7 @@ export function QuoteOfTheDay({ onFavorite, isFavorited = false }: QuoteOfTheDay
                             { color: isDark ? '#9CA3AF' : '#6B7280' },
                         ]}
                     >
-                        — {todayQuote.author}
+                        — {quote.author}
                     </MotiText>
                 </MotiView>
             </MotiView>
@@ -225,7 +240,7 @@ export function QuoteOfTheDay({ onFavorite, isFavorited = false }: QuoteOfTheDay
                 from={{ opacity: 0, translateY: 30 }}
                 animate={{
                     opacity: isLoaded ? 1 : 0,
-                    translateY: isLoaded ? 0 : 30
+                    translateY: isLoaded ? 0 : 30,
                 }}
                 transition={{ type: 'spring', damping: 20, delay: 800 }}
                 style={styles.actionsContainer}
@@ -250,9 +265,8 @@ export function QuoteOfTheDay({ onFavorite, isFavorited = false }: QuoteOfTheDay
                 {/* Copy Button */}
                 <ActionButton
                     icon="copy"
-                    label={showCopied ? 'Copied!' : 'Copy'}
+                    label="Copy"
                     onPress={handleCopy}
-                    isActive={showCopied}
                     isDark={isDark}
                 />
             </MotiView>
@@ -273,6 +287,9 @@ export function QuoteOfTheDay({ onFavorite, isFavorited = false }: QuoteOfTheDay
                     myquo
                 </MotiText>
             </MotiView>
+
+            {/* Toast */}
+            <ToastComponent />
         </View>
     );
 }
@@ -386,6 +403,29 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         paddingHorizontal: 24,
+    },
+    loadingContainer: {
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    errorContainer: {
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    errorText: {
+        fontSize: 16,
+        marginBottom: 16,
+    },
+    retryButton: {
+        backgroundColor: '#6366F1',
+        paddingHorizontal: 24,
+        paddingVertical: 12,
+        borderRadius: 8,
+    },
+    retryButtonText: {
+        color: '#FFFFFF',
+        fontSize: 16,
+        fontWeight: '600',
     },
     dateContainer: {
         marginBottom: 24,
