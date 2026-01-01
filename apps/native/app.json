@@ -8,10 +8,16 @@
     },
     "name": "myquo",
     "slug": "myquo",
-    "plugins": ["expo-font"],
+    "plugins": [
+      "expo-font",
+      "./plugins/widget/withQuoteWidget"
+    ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "android": {
+      "package": "com.myquo.app"
     }
   }
 }
