@@ -6,6 +6,7 @@ interface QuoteWidgetModuleInterface {
     getWidgetCount(): Promise<number>;
     requestWidgetPin(): Promise<boolean>;
     scheduleUpdates(): Promise<boolean>;
+    scheduleUpdatesAtTime(hour: number, minute: number): Promise<boolean>;
 }
 
 // Get the native module (Android only)
@@ -105,6 +106,24 @@ export const WidgetService = {
             return await QuoteWidgetNativeModule.scheduleUpdates();
         } catch (error) {
             console.error('Error scheduling widget updates:', error);
+            return false;
+        }
+    },
+
+    /**
+     * Schedule daily widget updates at a specific time
+     * @param hour - Hour in 24-hour format (0-23)
+     * @param minute - Minute (0-59)
+     */
+    async scheduleUpdatesAtTime(hour: number, minute: number): Promise<boolean> {
+        if (!this.isAvailable()) {
+            return false;
+        }
+
+        try {
+            return await QuoteWidgetNativeModule.scheduleUpdatesAtTime(hour, minute);
+        } catch (error) {
+            console.error('Error scheduling widget updates at time:', error);
             return false;
         }
     },
