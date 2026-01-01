@@ -87,7 +87,7 @@ function SectionHeader({ title, isDark }: { title: string; isDark: boolean }) {
 export default function Settings() {
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
-    
+
     const [holidayAware, setHolidayAware] = useState(true);
     const [notifications, setNotifications] = useState(false);
     const [selectedRegion, setSelectedRegion] = useState('United States');
@@ -139,7 +139,7 @@ export default function Settings() {
                     }
                     title="Holiday Region"
                     description={selectedRegion}
-                    onPress={() => {/* Open region picker */}}
+                    onPress={() => {/* Open region picker */ }}
                     rightElement={
                         <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                             <Path
@@ -224,7 +224,7 @@ export default function Settings() {
                     }
                     title="Update Time"
                     description="Midnight (12:00 AM)"
-                    onPress={() => {/* Open time picker */}}
+                    onPress={() => {/* Open time picker */ }}
                     rightElement={
                         <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                             <Path
@@ -254,7 +254,7 @@ export default function Settings() {
                     }
                     title="How to Add Widget"
                     description="Learn to add myquo to your home screen"
-                    onPress={() => {/* Show widget tutorial */}}
+                    onPress={() => {/* Show widget tutorial */ }}
                     rightElement={
                         <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                             <Path
@@ -312,7 +312,7 @@ export default function Settings() {
                         </Svg>
                     }
                     title="Privacy Policy"
-                    onPress={() => {/* Open privacy policy */}}
+                    onPress={() => {/* Open privacy policy */ }}
                     rightElement={
                         <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                             <Path
@@ -348,7 +348,7 @@ export default function Settings() {
                         </Svg>
                     }
                     title="Send Feedback"
-                    onPress={() => {/* Open feedback */}}
+                    onPress={() => {/* Open feedback */ }}
                     rightElement={
                         <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                             <Path
