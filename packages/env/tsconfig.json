@@ -1,0 +1,3 @@
+{
+  "extends": "@myquo/config/tsconfig.base.json"
+}
