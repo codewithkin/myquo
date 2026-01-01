@@ -1,22 +1,75 @@
-import { View, StyleSheet, useColorScheme, ScrollView } from 'react-native';
+import { View, StyleSheet, useColorScheme, ScrollView, Pressable, RefreshControl } from 'react-native';
 import { MotiView, MotiText } from 'moti';
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Svg, { Path } from 'react-native-svg';
-
-interface FavoriteQuote {
-    id: string;
-    text: string;
-    author: string;
-    savedAt: Date;
-}
-
-// Sample favorites for now - will be replaced with SQLite
-const SAMPLE_FAVORITES: FavoriteQuote[] = [];
+import { FavoriteQuote } from '@/lib/database';
+import { getFavorites, removeFavorite } from '@/lib/favorites-service';
+import { shareQuote, copyQuoteToClipboard } from '@/lib/share-service';
+import { useToast } from '@/components/toast';
 
 export default function Favorites() {
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
-    const [favorites, setFavorites] = useState<FavoriteQuote[]>(SAMPLE_FAVORITES);
+    const [favorites, setFavorites] = useState<FavoriteQuote[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+
+    const { showToast, ToastComponent } = useToast();
+
+    const loadFavorites = useCallback(async () => {
+        try {
+            const data = await getFavorites();
+            setFavorites(data);
+        } catch (err) {
+            console.error('Error loading favorites:', err);
+            showToast('Failed to load favorites', 'error');
+        } finally {
+            setIsLoading(false);
+            setRefreshing(false);
+        }
+    }, [showToast]);
+
+    useEffect(() => {
+        loadFavorites();
+    }, [loadFavorites]);
+
+    const handleRefresh = useCallback(() => {
+        setRefreshing(true);
+        loadFavorites();
+    }, [loadFavorites]);
+
+    const handleRemoveFavorite = async (quoteId: string) => {
+        try {
+            await removeFavorite(quoteId);
+            setFavorites((prev) => prev.filter((q) => q.id !== quoteId));
+            showToast('Removed from favorites', 'success');
+        } catch (err) {
+            console.error('Error removing favorite:', err);
+            showToast('Failed to remove favorite', 'error');
+        }
+    };
+
+    const handleShare = async (quote: FavoriteQuote) => {
+        try {
+            const result = await shareQuote(quote);
+            if (!result.success && result.message) {
+                showToast(result.message, 'info');
+            }
+        } catch (err) {
+            console.error('Error sharing:', err);
+            showToast('Failed to share quote', 'error');
+        }
+    };
+
+    const handleCopy = async (quote: FavoriteQuote) => {
+        try {
+            const result = await copyQuoteToClipboard(quote);
+            showToast(result.message, result.success ? 'success' : 'error');
+        } catch (err) {
+            console.error('Error copying:', err);
+            showToast('Failed to copy quote', 'error');
+        }
+    };
 
     const isEmpty = favorites.length === 0;
 
@@ -54,13 +107,20 @@ export default function Favorites() {
                 </MotiText>
             </MotiView>
 
-            {isEmpty ? (
+            {isEmpty && !isLoading ? (
                 <EmptyState isDark={isDark} />
             ) : (
                 <ScrollView
                     style={styles.scrollView}
                     contentContainerStyle={styles.scrollContent}
                     showsVerticalScrollIndicator={false}
+                    refreshControl={
+                        <RefreshControl
+                            refreshing={refreshing}
+                            onRefresh={handleRefresh}
+                            tintColor={isDark ? '#6366F1' : '#6366F1'}
+                        />
+                    }
                 >
                     {favorites.map((quote, index) => (
                         <FavoriteCard
@@ -68,10 +128,16 @@ export default function Favorites() {
                             quote={quote}
                             index={index}
                             isDark={isDark}
+                            onRemove={() => handleRemoveFavorite(quote.id)}
+                            onShare={() => handleShare(quote)}
+                            onCopy={() => handleCopy(quote)}
                         />
                     ))}
                 </ScrollView>
             )}
+
+            {/* Toast */}
+            <ToastComponent />
         </View>
     );
 }
@@ -131,36 +197,125 @@ interface FavoriteCardProps {
     quote: FavoriteQuote;
     index: number;
     isDark: boolean;
+    onRemove: () => void;
+    onShare: () => void;
+    onCopy: () => void;
 }
 
-function FavoriteCard({ quote, index, isDark }: FavoriteCardProps) {
+function FavoriteCard({ quote, index, isDark, onRemove, onShare, onCopy }: FavoriteCardProps) {
+    const [showActions, setShowActions] = useState(false);
+
+    const iconColor = isDark ? '#9CA3AF' : '#6B7280';
+    const savedDate = new Date(quote.savedAt).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+    });
+
     return (
         <MotiView
             from={{ opacity: 0, translateX: -30 }}
             animate={{ opacity: 1, translateX: 0 }}
             transition={{ type: 'timing', duration: 400, delay: index * 100 }}
-            style={[
-                styles.favoriteCard,
-                { backgroundColor: isDark ? '#1F2937' : '#FFFFFF' },
-            ]}
         >
-            <MotiText
+            <Pressable
+                onPress={() => setShowActions(!showActions)}
                 style={[
-                    styles.favoriteQuoteText,
-                    { color: isDark ? '#F9FAFB' : '#111827' },
-                ]}
-                numberOfLines={3}
-            >
-                "{quote.text}"
-            </MotiText>
-            <MotiText
-                style={[
-                    styles.favoriteAuthor,
-                    { color: isDark ? '#9CA3AF' : '#6B7280' },
+                    styles.favoriteCard,
+                    { backgroundColor: isDark ? '#1F2937' : '#FFFFFF' },
                 ]}
             >
-                — {quote.author}
-            </MotiText>
+                <View style={styles.cardContent}>
+                    <MotiText
+                        style={[
+                            styles.favoriteQuoteText,
+                            { color: isDark ? '#F9FAFB' : '#111827' },
+                        ]}
+                        numberOfLines={showActions ? undefined : 3}
+                    >
+                        "{quote.text}"
+                    </MotiText>
+                    <View style={styles.cardMeta}>
+                        <MotiText
+                            style={[
+                                styles.favoriteAuthor,
+                                { color: isDark ? '#9CA3AF' : '#6B7280' },
+                            ]}
+                        >
+                            — {quote.author}
+                        </MotiText>
+                        <MotiText
+                            style={[
+                                styles.savedDate,
+                                { color: isDark ? '#6B7280' : '#9CA3AF' },
+                            ]}
+                        >
+                            Saved {savedDate}
+                        </MotiText>
+                    </View>
+                </View>
+
+                {/* Action Buttons */}
+                <MotiView
+                    animate={{
+                        height: showActions ? 48 : 0,
+                        opacity: showActions ? 1 : 0,
+                    }}
+                    transition={{ type: 'timing', duration: 200 }}
+                    style={styles.actionsRow}
+                >
+                    <Pressable onPress={onShare} style={styles.actionBtn}>
+                        <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                            <Path
+                                d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"
+                                stroke={iconColor}
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            />
+                        </Svg>
+                        <MotiText style={[styles.actionBtnText, { color: iconColor }]}>
+                            Share
+                        </MotiText>
+                    </Pressable>
+
+                    <Pressable onPress={onCopy} style={styles.actionBtn}>
+                        <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                            <Path
+                                d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"
+                                stroke={iconColor}
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            />
+                            <Path
+                                d="M15 2H9a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1z"
+                                stroke={iconColor}
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            />
+                        </Svg>
+                        <MotiText style={[styles.actionBtnText, { color: iconColor }]}>
+                            Copy
+                        </MotiText>
+                    </Pressable>
+
+                    <Pressable onPress={onRemove} style={styles.actionBtn}>
+                        <Svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                            <Path
+                                d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
+                                stroke="#EF4444"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            />
+                        </Svg>
+                        <MotiText style={[styles.actionBtnText, { color: '#EF4444' }]}>
+                            Remove
+                        </MotiText>
+                    </Pressable>
+                </MotiView>
+            </Pressable>
         </MotiView>
     );
 }
@@ -224,13 +379,44 @@ const styles = StyleSheet.create({
         shadowRadius: 8,
         elevation: 3,
     },
+    cardContent: {
+        flex: 1,
+    },
     favoriteQuoteText: {
         fontSize: 16,
         lineHeight: 24,
         marginBottom: 12,
     },
+    cardMeta: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
     favoriteAuthor: {
         fontSize: 14,
         fontStyle: 'italic',
+    },
+    savedDate: {
+        fontSize: 12,
+    },
+    actionsRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-around',
+        marginTop: 12,
+        paddingTop: 12,
+        borderTopWidth: 1,
+        borderTopColor: '#374151',
+        overflow: 'hidden',
+    },
+    actionBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+    },
+    actionBtnText: {
+        fontSize: 14,
+        fontWeight: '500',
+        marginLeft: 6,
     },
 });
