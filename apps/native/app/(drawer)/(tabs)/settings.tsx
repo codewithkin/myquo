@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { WidgetService } from '@/lib/widget-service';
 import { useToast } from '@/components/toast';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface SettingItemProps {
     icon: React.ReactNode;
@@ -95,24 +96,38 @@ export default function Settings() {
     const [selectedRegion, setSelectedRegion] = useState('United States');
     const [widgetCount, setWidgetCount] = useState(0);
     const [isWidgetAvailable, setIsWidgetAvailable] = useState(false);
+    const [widgetUpdateHour, setWidgetUpdateHour] = useState(0); // 0-23
+    const [widgetUpdateMinute, setWidgetUpdateMinute] = useState(0); // 0-59
 
     const { showToast, ToastComponent } = useToast();
 
     const iconColor = isDark ? '#9CA3AF' : '#6B7280';
 
-    // Check widget status on mount
+    // Load settings and check widget status on mount
     useEffect(() => {
-        const checkWidgetStatus = async () => {
-            const available = WidgetService.isAvailable();
-            setIsWidgetAvailable(available);
+        const loadSettings = async () => {
+            try {
+                // Load widget update time from storage
+                const savedHour = await AsyncStorage.getItem('widget_update_hour');
+                const savedMinute = await AsyncStorage.getItem('widget_update_minute');
 
-            if (available) {
-                const count = await WidgetService.getWidgetCount();
-                setWidgetCount(count);
+                if (savedHour !== null) setWidgetUpdateHour(parseInt(savedHour));
+                if (savedMinute !== null) setWidgetUpdateMinute(parseInt(savedMinute));
+
+                // Check widget availability and count
+                const available = WidgetService.isAvailable();
+                setIsWidgetAvailable(available);
+
+                if (available) {
+                    const count = await WidgetService.getWidgetCount();
+                    setWidgetCount(count);
+                }
+            } catch (error) {
+                console.error('Error loading settings:', error);
             }
         };
 
-        checkWidgetStatus();
+        loadSettings();
     }, []);
 
     // Handle add widget button press
@@ -163,6 +178,65 @@ export default function Settings() {
             [{ text: 'OK' }]
         );
     }, []);
+
+    // Handle widget update time change
+    const handleUpdateTimePress = useCallback(() => {
+        const formatTime = (hour: number, minute: number) => {
+            const ampm = hour >= 12 ? 'PM' : 'AM';
+            const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+            return `${displayHour}:${minute.toString().padStart(2, '0')} ${ampm}`;
+        };
+
+        const timeOptions = [];
+        for (let hour = 0; hour < 24; hour++) {
+            timeOptions.push({
+                text: formatTime(hour, 0),
+                onPress: () => selectUpdateTime(hour, 0)
+            });
+        }
+
+        timeOptions.push({ text: 'Cancel', style: 'cancel' });
+
+        Alert.alert(
+            'Widget Update Time',
+            `Current: ${formatTime(widgetUpdateHour, widgetUpdateMinute)}\n\nSelect when you want the widget to update with a new quote:`,
+            timeOptions
+        );
+    }, [widgetUpdateHour, widgetUpdateMinute]);
+
+    // Select and save widget update time
+    const selectUpdateTime = useCallback(async (hour: number, minute: number) => {
+        try {
+            setWidgetUpdateHour(hour);
+            setWidgetUpdateMinute(minute);
+
+            // Save to storage
+            await AsyncStorage.setItem('widget_update_hour', hour.toString());
+            await AsyncStorage.setItem('widget_update_minute', minute.toString());
+
+            // Reschedule widget updates with new time
+            if (isWidgetAvailable && widgetCount > 0) {
+                const success = await WidgetService.scheduleUpdatesAtTime(hour, minute);
+                if (success) {
+                    showToast('Widget update time changed', 'success');
+                } else {
+                    showToast('Failed to update schedule', 'error');
+                }
+            } else {
+                showToast('Update time saved', 'success');
+            }
+        } catch (error) {
+            console.error('Error saving update time:', error);
+            showToast('Failed to save update time', 'error');
+        }
+    }, [isWidgetAvailable, widgetCount, showToast]);
+
+    // Format time for display
+    const getDisplayTime = useCallback(() => {
+        const ampm = widgetUpdateHour >= 12 ? 'PM' : 'AM';
+        const displayHour = widgetUpdateHour === 0 ? 12 : widgetUpdateHour > 12 ? widgetUpdateHour - 12 : widgetUpdateHour;
+        return `${displayHour}:${widgetUpdateMinute.toString().padStart(2, '0')} ${ampm}`;
+    }, [widgetUpdateHour, widgetUpdateMinute]);
 
     return (
         <View
@@ -364,8 +438,8 @@ export default function Settings() {
                         </Svg>
                     }
                     title="Update Time"
-                    description="Midnight (12:00 AM)"
-                    onPress={() => {/* Open time picker */ }}
+                    description={getDisplayTime()}
+                    onPress={handleUpdateTimePress}
                     rightElement={
                         <Svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                             <Path
