@@ -70,7 +70,7 @@ export function QuoteOfTheDay({ onFavorite, isFavorited = false }: QuoteOfTheDay
     const todayQuote = useMemo(() => {
         const today = new Date();
         const dateString = `${today.getFullYear()}-${today.getMonth() + 1}-${today.getDate()}`;
-        
+
         // Simple hash for deterministic selection
         let hash = 0;
         for (let i = 0; i < dateString.length; i++) {
@@ -78,7 +78,7 @@ export function QuoteOfTheDay({ onFavorite, isFavorited = false }: QuoteOfTheDay
             hash = ((hash << 5) - hash) + char;
             hash = hash & hash;
         }
-        
+
         const index = Math.abs(hash) % SAMPLE_QUOTES.length;
         return SAMPLE_QUOTES[index];
     }, []);
@@ -139,14 +139,14 @@ export function QuoteOfTheDay({ onFavorite, isFavorited = false }: QuoteOfTheDay
             {/* Quote Card */}
             <MotiView
                 from={{ opacity: 0, scale: 0.9 }}
-                animate={{ 
-                    opacity: isLoaded ? 1 : 0, 
-                    scale: isLoaded ? 1 : 0.9 
+                animate={{
+                    opacity: isLoaded ? 1 : 0,
+                    scale: isLoaded ? 1 : 0.9
                 }}
-                transition={{ 
-                    type: 'spring', 
-                    damping: 20, 
-                    delay: 200 
+                transition={{
+                    type: 'spring',
+                    damping: 20,
+                    delay: 200
                 }}
                 style={[
                     styles.quoteCard,
@@ -184,9 +184,9 @@ export function QuoteOfTheDay({ onFavorite, isFavorited = false }: QuoteOfTheDay
                 {/* Quote Text */}
                 <MotiView
                     from={{ opacity: 0, translateY: 30 }}
-                    animate={{ 
-                        opacity: isLoaded ? 1 : 0, 
-                        translateY: isLoaded ? 0 : 30 
+                    animate={{
+                        opacity: isLoaded ? 1 : 0,
+                        translateY: isLoaded ? 0 : 30
                     }}
                     transition={{ type: 'timing', duration: 600, delay: 500 }}
                 >
@@ -203,9 +203,9 @@ export function QuoteOfTheDay({ onFavorite, isFavorited = false }: QuoteOfTheDay
                 {/* Author */}
                 <MotiView
                     from={{ opacity: 0, translateX: -20 }}
-                    animate={{ 
-                        opacity: isLoaded ? 1 : 0, 
-                        translateX: isLoaded ? 0 : -20 
+                    animate={{
+                        opacity: isLoaded ? 1 : 0,
+                        translateX: isLoaded ? 0 : -20
                     }}
                     transition={{ type: 'timing', duration: 500, delay: 700 }}
                 >
@@ -223,9 +223,9 @@ export function QuoteOfTheDay({ onFavorite, isFavorited = false }: QuoteOfTheDay
             {/* Action Buttons */}
             <MotiView
                 from={{ opacity: 0, translateY: 30 }}
-                animate={{ 
-                    opacity: isLoaded ? 1 : 0, 
-                    translateY: isLoaded ? 0 : 30 
+                animate={{
+                    opacity: isLoaded ? 1 : 0,
+                    translateY: isLoaded ? 0 : 30
                 }}
                 transition={{ type: 'spring', damping: 20, delay: 800 }}
                 style={styles.actionsContainer}
